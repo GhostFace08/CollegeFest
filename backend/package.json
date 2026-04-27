@@ -4,7 +4,12 @@
   "main": "src/app.js",
   "scripts": {
     "start": "node src/app.js",
-    "dev": "nodemon src/app.js"
+    "dev": "nodemon src/app.js",
+    "test": "jest --coverage --coverageReporters=lcov --coverageReporters=text"
+  },
+  "jest": {
+    "testEnvironment": "node",
+    "coverageDirectory": "coverage"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",
@@ -19,6 +24,8 @@
     "uuid": "^9.0.1"
   },
   "devDependencies": {
-    "nodemon": "^3.1.0"
+    "jest": "^30.3.0",
+    "nodemon": "^3.1.0",
+    "supertest": "^7.2.2"
   }
 }
