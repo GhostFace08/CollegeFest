@@ -1,0 +1,374 @@
+COLLEGEFEST PROJECT HANDOFF CONTEXT
+=====================================
+
+STUDENT: Rishabh Goyal, COMPS-A, Sixth Semester, SPIT Mumbai
+PROJECT PATH: C:\Users\Rishabh Goyal\OneDrive\Desktop\COLLEGE\SIXTH SEMESTER\DevOPS\CollegeFest
+STACK: MERN — Express backend (port 5000) + React/Vite/TypeScript/TailwindCSS/shadcn frontend (port 8080)
+ROUTER: TanStack Router (file-based routing in src/routes/)
+STATE: Custom React Context in src/lib/fest-context.tsx
+
+=====================================
+CREDENTIALS
+=====================================
+Superadmin: superadmin@collegefest.com / superadmin123
+Admins (approved, password: admin123):
+  aryan.mehta@collegefest.com (Technical Committee)
+  sneha.rao@collegefest.com (Cultural Committee)
+  kabir.singh@collegefest.com (Sports Committee)
+  priya.nair@collegefest.com (General Committee)
+Pending admins (password: admin123):
+  rohan.das@collegefest.com
+  aisha.khan@collegefest.com
+  nikhil.sharma@collegefest.com
+Students (password: student123):
+  rahul.sharma@student.com (and 19 more)
+
+=====================================
+BACKEND API ROUTES
+=====================================
+AUTH:
+  POST /api/auth/login          → returns { token, user: { _id, name, email, role, isApproved, committees[] } }
+  POST /api/auth/register       → student registration (auto-approved)
+  POST /api/auth/register-admin → admin request (isApproved: false)
+  GET  /api/auth/me             → returns full user with populated committees
+
+EVENTS:
+  GET    /api/events                    → public, approved only
+  GET    /api/events/admin/mine         → admin's own events (filtered by createdBy)
+  GET    /api/events/:id
+  POST   /api/events                    → admin creates (status: draft)
+  PUT    /api/events/:id                → admin edits (resets to draft)
+  DELETE /api/events/:id
+  POST   /api/events/:id/submit         → submit draft for approval
+
+SUPERADMIN EVENTS:
+  GET    /api/superadmin/events/pending       → pending events only
+  PATCH  /api/superadmin/events/:id/approve
+  PATCH  /api/superadmin/events/:id/reject    → body: { note }
+  PATCH  /api/superadmin/events/:id/unpublish
+
+REGISTRATIONS:
+  POST   /api/registrations               → body: { eventId } — student registers
+  GET    /api/registrations/my            → student's own registrations (populated with event+student)
+  DELETE /api/registrations/:id           → cancel
+  POST   /api/registrations/verify        → QR verify
+  GET    /api/registrations/event/:eventId → admin sees who registered
+
+VOLUNTEERS:
+  GET    /api/volunteers
+  POST   /api/volunteers                  → body: { name, email, phone }
+  POST   /api/volunteers/:id/assign       → body: { event: eventId, role }
+  PATCH  /api/volunteers/:id/attendance   → body: { assignmentId, attended }
+  DELETE /api/volunteers/:id
+
+FINANCE/SPONSORS:
+  GET    /api/finance/sponsors
+  POST   /api/finance/sponsors
+  PUT    /api/finance/sponsors/:id
+  DELETE /api/finance/sponsors/:id
+  GET    /api/finance/event/:eventId
+  PUT    /api/finance/event/:eventId
+
+LOGISTICS:
+  GET    /api/logistics/:eventId
+  PUT    /api/logistics/:eventId          → body: { venue, notes, checklist: [{item, done}] }
+  NOTE: checklist items use "item" field (not "task") in backend
+
+SUPERADMIN:
+  GET    /api/superadmin/dashboard
+  GET    /api/superadmin/committees
+  POST   /api/superadmin/committees
+  PUT    /api/superadmin/committees/:id
+  DELETE /api/superadmin/committees/:id
+  GET    /api/superadmin/admins
+  GET    /api/superadmin/admins/pending
+  PATCH  /api/superadmin/admins/:id/approve     → body: { committeeIds: [] }
+  DELETE /api/superadmin/admins/:id/reject
+  PATCH  /api/superadmin/admins/:id/committees  → body: { committeeIds: [] }
+  PATCH  /api/superadmin/admins/:id/deactivate
+
+=====================================
+FRONTEND FILE STRUCTURE (src/)
+=====================================
+lib/
+  api.ts              → fetch wrapper, reads token from localStorage('collegefest_token')
+  auth.tsx            → AuthProvider, login hits /api/auth/login, stores user+token in localStorage
+  fest-context.tsx    → FestProvider, all state management
+  mock-data.ts        → type definitions only (initial state removed, mock data no longer used)
+routes/
+  index.tsx                      → Login page (3 tabs: Sign In / Student register / Admin register)
+  admin.tsx                      → Admin layout
+  admin.dashboard.tsx
+  admin.events.tsx
+  admin.volunteers.tsx
+  admin.logistics.tsx
+  admin.finance.tsx
+  admin.scanner.tsx
+  student.tsx                    → Student layout
+  student.events.tsx
+  student.events_.$eventId.tsx
+  student.registrations.tsx
+  student.profile.tsx
+  superadmin.tsx                 → Superadmin layout
+  superadmin.dashboard.tsx
+  superadmin.admins.tsx
+  superadmin.committees.tsx
+  superadmin.approvals.tsx
+
+=====================================
+KEY IMPLEMENTATION DETAILS
+=====================================
+localStorage keys:
+  'collegefest_token' → JWT token
+  'collegefest_user'  → JSON stringified AuthUser object
+
+AuthUser shape:
+  { id, name, email, role, isApproved, committees: [{_id, name}], committee: string (first committee name) }
+
+fest-context normalizers:
+  normalizeEvent     → maps _id to id, populates committee name from committee object
+  normalizeReg       → maps _id to id, extracts event._id and student._id
+  normalizeVolunteer → maps _id to id, committee name from committee object
+  normalizeSponsor   → maps actionChecklist to checklist array
+  normalizeLogistics → maps checklist[].item to task field
+  normalizeAdmin     → maps isApproved bool to status ('approved'/'pending')
+
+=====================================
+CURRENT STATE OF fest-context.tsx
+=====================================
+- Initial state: ALL EMPTY ARRAYS (no mock data)
+- loading: starts true, set false after data loads
+- useEffect loads data based on role:
+  student    → refreshEvents() + refreshRegistrations()
+  admin      → refreshEvents() + refreshVolunteers() + refreshSponsors()
+  superadmin → refreshEvents() + refreshCommittees() + refreshAdmins()
+
+refreshEvents logic:
+  admin role → GET /events/admin/mine
+  superadmin → GET /events + GET /superadmin/events/pending (combined)
+  student/public → GET /events
+
+=====================================
+KNOWN BUGS (all fixed before dockerization)
+=====================================
+
+BUG 1 — Admin can see/edit events from ALL committees (not just their own)
+  Root cause: admin.events.tsx filters events as:
+    const myEvents = events.filter(e => e.committee === user?.committee);
+  But /events/admin/mine already returns only their events.
+  Fix: In admin.events.tsx change:
+    const myEvents = events.filter(e => e.committee === user?.committee);
+  To:
+    const myEvents = events;
+
+BUG 2 — Admin can't see logistics, volunteers, or sponsors
+  Root cause: Pages filter by committee name from mock data or API calls fail silently.
+  Fix: Add useEffect in admin.logistics.tsx, admin.volunteers.tsx, admin.finance.tsx:
+    const { volunteers, refreshVolunteers } = useFest();
+    useEffect(() => { if (volunteers.length === 0) refreshVolunteers(); }, []);
+
+BUG 3 — New events not appearing on superadmin side / not saving to DB
+  Root cause 1: createEvent sends committee as a name string but backend expects ObjectId.
+  Root cause 2: After createEvent, superadmin refreshEvents is not re-fetching.
+  Fix in createEvent payload:
+    committee: user?.committees?.[0]?._id || e.committee  ← use _id not name
+  Fix in admin.events.tsx handleSave:
+    After createEvent(), call refreshEvents() to reload.
+
+BUG 4 — Admin dashboard shows all zeros
+  Root cause: Stats computed from empty events array before data loads.
+  Fix: In admin.dashboard.tsx add:
+    const { events, loading, refreshEvents } = useFest();
+    useEffect(() => { refreshEvents(); }, []);
+
+BUG 5 — Student registrations not showing (My Registrations tab empty)
+  Root cause: Frontend filters registrations by studentId but user.id from
+  localStorage may not match student._id from DB.
+  Fix: Remove frontend filter — API already returns only that student's registrations.
+  Change:
+    registrations.filter(r => r.studentId === user?.id)
+  To:
+    registrations
+  Also add useEffect in student.registrations.tsx:
+    const { registrations, refreshRegistrations } = useFest();
+    useEffect(() => { refreshRegistrations(); }, []);
+
+=====================================
+HOW TO RUN (LOCAL)
+=====================================
+Terminal 1 (Backend):
+  cd "C:\Users\Rishabh Goyal\OneDrive\Desktop\COLLEGE\SIXTH SEMESTER\DevOPS\CollegeFest\backend"
+  node src/app.js
+
+Terminal 2 (Frontend):
+  cd "C:\Users\Rishabh Goyal\OneDrive\Desktop\COLLEGE\SIXTH SEMESTER\DevOPS\CollegeFest\frontend"
+  npm run dev
+  → runs on http://localhost:8080
+
+Seed/Unseed:
+  node seed.js    → populates DB with test data
+  node unseed.js  → clears all data except superadmin
+
+=====================================
+CLOUD DEPLOYMENT — GCP COMPUTE ENGINE
+=====================================
+PLATFORM DECISION:
+  Chosen: GCP Compute Engine (Ubuntu 22.04, e2-micro, free tier — $300 credit)
+  Reason: Full SSH access, supports Docker + Jenkins + Ansible on same/sibling VM
+  Alternatives considered: AWS EC2, Azure VM, DigitalOcean, Railway, Render
+
+GCP VM SETUP STEPS:
+  1. Create project at console.cloud.google.com
+  2. Compute Engine → VM Instances → Create Instance
+       Machine type : e2-micro (free tier)
+       OS           : Ubuntu 22.04 LTS
+       Firewall     : allow HTTP + HTTPS
+  3. VPC Network → Firewall → Add rule:
+       Name    : allow-collegefest
+       Source  : 0.0.0.0/0
+       Ports   : TCP 8080, 5000
+  4. SSH into VM via GCP browser console
+  5. Install Docker:
+       sudo apt update
+       sudo apt install -y docker.io docker-compose
+       sudo usermod -aG docker $USER
+  6. Clone repo and run:
+       git clone https://github.com/your-repo/CollegeFest.git
+       cd CollegeFest
+       docker-compose up --build -d
+  7. Access app at http://<GCP-EXTERNAL-IP>:8080
+
+IMPORTANT — VITE API URL:
+  Frontend API calls currently point to localhost:5000.
+  On GCP these must point to the external IP or Docker service name.
+  Set VITE_API_URL=http://<GCP-IP>:5000 as a build arg in the frontend Dockerfile.
+  Optionally configure Nginx to proxy /api → http://backend:5000/api
+  so both frontend and API are served from port 8080.
+
+=====================================
+STEP 9 — DOCKER SETUP
+=====================================
+backend/Dockerfile:
+  FROM node:18-alpine
+  WORKDIR /app
+  COPY package*.json ./
+  RUN npm install
+  COPY . .
+  EXPOSE 5000
+  CMD ["node", "src/app.js"]
+
+frontend/Dockerfile (two-stage build):
+  FROM node:18-alpine AS build
+  WORKDIR /app
+  COPY package*.json ./
+  RUN npm install
+  COPY . .
+  RUN npm run build
+
+  FROM nginx:alpine
+  COPY --from=build /app/dist /usr/share/nginx/html
+  EXPOSE 8080
+  CMD ["nginx", "-g", "daemon off;"]
+
+docker-compose.yml (project root):
+  version: '3.8'
+  services:
+    frontend:
+      build: ./frontend
+      ports:
+        - "8080:8080"
+      depends_on:
+        - backend
+
+    backend:
+      build: ./backend
+      ports:
+        - "5000:5000"
+      environment:
+        - MONGO_URI=mongodb://mongo:27017/collegefest
+        - JWT_SECRET=your_jwt_secret
+      depends_on:
+        - mongo
+
+    mongo:
+      image: mongo:6
+      ports:
+        - "27017:27017"
+      volumes:
+        - mongo-data:/data/db
+
+  volumes:
+    mongo-data:
+
+=====================================
+STEP 10 — JENKINSFILE (CI/CD PIPELINE)
+=====================================
+Place Jenkinsfile at project root:
+
+  pipeline {
+    agent any
+    stages {
+      stage('Clone') {
+        steps { git 'https://github.com/your-repo/CollegeFest.git' }
+      }
+      stage('Build') {
+        steps { sh 'docker-compose build' }
+      }
+      stage('Deploy') {
+        steps { sh 'docker-compose up -d --force-recreate' }
+      }
+    }
+  }
+
+NOTE: Jenkins installed on same GCP VM or a separate sibling e2-micro instance.
+
+=====================================
+STEP 11 — ANSIBLE PLAYBOOK
+=====================================
+ansible/inventory:
+  [gcp_vm]
+  <GCP-EXTERNAL-IP> ansible_user=ubuntu ansible_ssh_private_key_file=~/.ssh/gcp_key
+
+ansible/playbook.yml:
+  - hosts: gcp_vm
+    become: yes
+    tasks:
+      - name: Install Docker
+        apt:
+          name: [docker.io, docker-compose]
+          state: present
+          update_cache: yes
+
+      - name: Start Docker service
+        service:
+          name: docker
+          state: started
+          enabled: yes
+
+      - name: Clone repo
+        git:
+          repo: 'https://github.com/your-repo/CollegeFest.git'
+          dest: /home/ubuntu/CollegeFest
+
+      - name: Run docker-compose
+        command: docker-compose up -d --build
+        args:
+          chdir: /home/ubuntu/CollegeFest
+
+=====================================
+STEP 12 — FINAL POLISH
+=====================================
+.gitignore should exclude:
+  node_modules/
+  .env
+  dist/
+
+README.md should document:
+  - GCP external IP and access URL
+  - Local run instructions (backend + frontend terminals)
+  - Docker commands (build, up, down)
+  - Seed and unseed instructions
+  - Jenkins and Ansible setup notes
+
+
+ignore the bugs and help me build the rest of the project from start of step 9(GCP BASED DOCKERIZATION)

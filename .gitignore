@@ -1,0 +1,33 @@
+# Dependencies
+node_modules/
+frontend/node_modules/
+backend/node_modules/
+
+# Build output
+dist/
+frontend/dist/
+
+# Environment secrets — NEVER commit
+.env
+backend/.env
+frontend/.env
+*.env
+
+# Logs
+*.log
+npm-debug.log*
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Docker
+*.dockerignore
+
+# Frontend — Cloudflare/Lovable specific, not needed
+frontend/wrangler.jsonc
+frontend/bunfig.toml
+frontend/bun.lockb
+
+# Backup frontend — not used in Docker build
+frontend_backup/
